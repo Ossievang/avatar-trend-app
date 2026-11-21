@@ -1,6 +1,8 @@
 import streamlit as st
 import json
 import requests
+import io
+from docx import Document
 from pytrends.request import TrendReq
 from google import genai
 from google.genai import types
@@ -43,7 +45,7 @@ When generating a business blueprint for a selected trend, provide:
 """
 
 # -------------------------------------------------------------------
-# 2. DATA SCRAPING FUNCTIONS
+# 2. DATA SCRAPING & HELPERS
 # -------------------------------------------------------------------
 def fetch_all_trends():
     trends = []
@@ -83,6 +85,29 @@ def fetch_all_trends():
     
     return trends
 
+def convert_text_to_docx(title, content_text):
+    """Converts raw text into a cleanly styled Word document stream."""
+    doc = Document()
+    doc.add_heading(title, level=1)
+    
+    # Split content by line breaks to build paragraphs cleanly
+    lines = content_text.split('\n')
+    for line in lines:
+        if line.strip().startswith('###'):
+            doc.add_heading(line.replace('###', '').strip(), level=3)
+        elif line.strip().startswith('##'):
+            doc.add_heading(line.replace('##', '').strip(), level=2)
+        elif line.strip().startswith('#'):
+            doc.add_heading(line.replace('#', '').strip(), level=1)
+        else:
+            if line.strip():
+                doc.add_paragraph(line.strip())
+                
+    bio = io.BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio
+
 # -------------------------------------------------------------------
 # 3. APP STATE & USER INTERACTION
 # -------------------------------------------------------------------
@@ -90,20 +115,20 @@ if "scraped_data" not in st.session_state:
     st.session_state.scraped_data = None
 if "score_table" not in st.session_state:
     st.session_state.score_table = None
+if "blueprint_text" not in st.session_state:
+    st.session_state.blueprint_text = None
 
 if st.button("🚀 Scrape & Score Live Trends", type="primary"):
     if not gemini_key or gemini_key.strip() == "":
         st.error("🔑 Please enter a valid Gemini API Key in the left sidebar configuration panel first!")
     else:
+        st.session_state.blueprint_text = None  # Reset old blueprint
         with st.spinner("Scraping cross-platform networks and crunching scores..."):
             try:
-                # 1. Run Scraper
                 trends_payload = fetch_all_trends()
                 st.session_state.scraped_data = trends_payload
                 
-                # 2. Initialize Gemini Client using modern stable google-genai layout
                 client = genai.Client(api_key=gemini_key)
-                
                 prompt = f"Analyze and score these trends based on your instructions. Return ONLY the markdown table:\n{json.dumps(trends_payload)}"
                 
                 response = client.models.generate_content(
@@ -116,9 +141,9 @@ if st.button("🚀 Scrape & Score Live Trends", type="primary"):
                 )
                 st.session_state.score_table = response.text
             except Exception as e:
-                st.error(f"API Error: Please check your API key validity. Details: {str(e)}")
+                st.error(f"API Error: {str(e)}")
 
-# Display Results & Next Steps
+# Display Evaluation Matrix
 if st.session_state.score_table:
     st.success("Trend Evaluation Complete!")
     st.markdown(st.session_state.score_table)
@@ -126,7 +151,6 @@ if st.session_state.score_table:
     st.markdown("---")
     st.subheader("🏗️ Step 2: Initialize Business Strategy Blueprint")
     
-    # Create dropdown choices dynamically from scraped data
     options = [f"{t['id']} | ({t['platform']}) - {t['topic'][:60]}..." for t in st.session_state.scraped_data]
     selected_option = st.selectbox("Choose the trend you want to build a business around:", options)
     
@@ -144,8 +168,24 @@ if st.session_state.score_table:
                         temperature=0.7
                     )
                 )
-                
-                st.markdown("### 📋 Your Turnkey Business Strategy")
-                st.write(blueprint_response.text)
+                st.session_state.blueprint_text = blueprint_response.text
             except Exception as e:
                 st.error(f"Blueprint Error: {str(e)}")
+
+# Display Strategy & Download Action
+if st.session_state.blueprint_text:
+    st.markdown("### 📋 Your Turnkey Business Strategy")
+    
+    # Compile the file data directly in RAM for the mobile download button
+    docx_file = convert_text_to_docx("TrendAvatar Business Strategy Blueprint", st.session_state.blueprint_text)
+    
+    st.download_button(
+        label="📥 Download Strategy as Google Docs / Word File",
+        data=docx_file,
+        file_name="avatar_business_blueprint.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        type="primary"
+    )
+    
+    st.markdown("---")
+    st.write(st.session_state.blueprint_text)
