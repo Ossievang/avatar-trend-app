@@ -62,7 +62,7 @@ def fetch_all_trends():
     headers = {'User-Agent': 'Mozilla/5.0'}
     for sub in subreddits:
         try:
-            url = f"https://www.reddit.com/r/{sub}/hot.json?limit=3"
+            url = f"https://reddit.com{sub}/hot.json?limit=3"
             res = requests.get(url, headers=headers).json()
             for idx, post in enumerate(res['data']['children']):
                 trends.append({
@@ -107,7 +107,7 @@ if st.button("🚀 Scrape & Score Live Trends", type="primary"):
                 prompt = f"Analyze and score these trends based on your instructions. Return ONLY the markdown table:\n{json.dumps(trends_payload)}"
                 
                 response = client.models.generate_content(
-                    model='gemini-3.8-flash',
+                    model='gemini-3.6-flash',
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         system_instruction=SYSTEM_INSTRUCTION,
@@ -137,7 +137,7 @@ if st.session_state.score_table:
                 blueprint_prompt = f"The user has selected this specific trend: '{selected_option}'. Generate the full, comprehensive Phase 3 Business Blueprint for it."
                 
                 blueprint_response = client.models.generate_content(
-                    model='gemini-3.8-flash',
+                    model='gemini-3.6-flash',
                     contents=blueprint_prompt,
                     config=types.GenerateContentConfig(
                         system_instruction=SYSTEM_INSTRUCTION,
